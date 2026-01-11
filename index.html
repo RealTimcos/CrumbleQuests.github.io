@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crumble Clicker Deluxe</title>
+<style>
+body { margin:0; font-family:Arial,sans-serif; display:flex; flex-direction:column; align-items:center; background:#f5e1da; overflow:hidden; }
+#topStats { margin-top:20px; text-align:center; font-weight:bold; padding:10px 20px; background:rgba(255,255,255,0.2); border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.2); width:90%; max-width:400px; position:relative; z-index:2;}
+#xpBarContainer { width:100%; height:12px; background:rgba(0,0,0,0.1); border-radius:6px; margin-top:5px;}
+#xpBar { height:100%; width:0%; background:#d6a449; border-radius:6px; transition:width 0.3s; }
+#crumble { width:150px; height:150px; border-radius:50%; background:#8b5e3c; border:3px solid #6b3f1e; display:flex; align-items:center; justify-content:center; font-size:2.5em; margin:20px; cursor:pointer; box-shadow:0 6px 15px rgba(0,0,0,0.3); position:relative; z-index:2;}
+#panelButtons { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; justify-content:center; z-index:2; position:relative;}
+.panelBtn { padding:8px 14px; border-radius:8px; border:none; cursor:pointer; background:#bfa257; color:#3b2f1f; font-weight:bold;}
+.panelBtn:hover{background:#d1aa4a; transform:scale(1.05);}
+.panelContainer {position:fixed; top:0; right:-400px; width:340px; height:100%; background:rgba(255,230,180,0.95); padding:15px; border-left:3px solid #b58900; transition:right 0.4s ease; overflow-y:auto; box-shadow:-4px 0 12px rgba(0,0,0,0.3); z-index:2;}
+.panelContainer.active{right:0;}
+.button {background:#bfa257; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; margin:5px; width:100%; text-align:left; box-shadow:0 2px 5px rgba(0,0,0,0.2);}
+.button:hover{background:#d1aa4a; transform:scale(1.02);}
+.particle {position:absolute; width:12px; height:12px; border-radius:50%; background:#d6a449; pointer-events:none; animation:particleAnim 0.6s forwards;}
+@keyframes particleAnim {0%{transform:translate(0,0) scale(1); opacity:1;}100%{transform:translate(var(--x),var(--y)) scale(0); opacity:0;}}
+.rain {position:absolute; top:-30px; font-size:24px; opacity:0.7; pointer-events:none; animation:fall linear forwards;}
+@keyframes fall { to { transform:translateY(120vh) rotate(360deg); } }
+#miniGameContainer {display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff1c2; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:999;}
+#miniGameContainer h3 {text-align:center;}
+#miniGameContainer button {margin-top:10px;}
+</style>
+</head>
+<body>
+<div id="topStats">
+Crumbles: <span id="crumbCount">0</span><br>
+XP: <span id="playerXP">0</span>/<span id="xpThreshold">100</span><br>
+Level: <span id="playerLevel">1</span><br>
+Rebirth x<span id="rebirthMultiplier">1</span>
+<div id="xpBarContainer"><div id="xpBar"></div></div>
+</div>
+
+<button id="crumble">🍪</button>
+
+<div id="panelButtons">
+<button class="panelBtn" data-target="upgradesPanel">Upgrades</button>
+<button class="panelBtn" data-target="questsPanel">Quests</button>
+<button class="panelBtn" data-target="rebirthsPanel">Rebirths</button>
+<button class="panelBtn" id="miniGameBtn">Mini Game</button>
+</div>
+
+<div id="upgradesPanel" class="panelContainer"><h3>Upgrades</h3><div id="upgrades"></div></div>
+<div id="questsPanel" class="panelContainer"><h3>Quests</h3><div id="quests"></div></div>
+<div id="rebirthsPanel" class="panelContainer"><h3>Rebirths</h3><div id="rebirths"></div></div>
+
+<div id="miniGameContainer">
+<h3 id="miniGameTitle">Mini Game</h3>
+<div id="miniGameContent"></div>
+<button id="miniGameClose">Close</button>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+
+// --- HELPERS ---
+function formatNum(n){ if(n>=1e12)return (n/1e12).toFixed(2)+'T'; if(n>=1e9)return (n/1e9).toFixed(2)+'B'; if(n>=1e6)return (n/1e6).toFixed(2)+'M'; if(n>=1e3)return (n/1e3).toFixed(2)+'K'; return Math.floor(n);}
+function createParticle(x,y){ const p=document.createElement('div'); p.className='particle'; p.style.left=x+'px'; p.style.top=y+'px'; p.style.setProperty('--x',(Math.random()*100-50)+'px'); p.style.setProperty('--y',(-Math.random()*100)+'px'); document.body.appendChild(p); setTimeout(()=>p.remove(),600); }
+
+// --- VARIABLES ---
+let crumbCount=0, clickPower=1, playerXP=0, playerLevel=1, xpThreshold=100, rebirthMultiplier=1;
+
+// --- UPGRADES ---
+const upgrades=[
+{name:'Extra Click', cost:100, effect:()=>clickPower+=1, bought:false},
+{name:'Double Click', cost:500, effect:()=>clickPower+=2, bought:false},
+{name:'Golden Fingers', cost:1000, effect:()=>clickPower+=5, bought:false},
+{name:'Mega Crumble', cost:5000, effect:()=>clickPower+=10, bought:false},
+{name:'Giant Crunch', cost:25000, effect:()=>clickPower+=25, bought:false},
+{name:'Mixed Punch', cost:50000, effect:()=>clickPower+=50, bought:false},
+{name:'Just like heaven', cost:250000, effect:()=>clickPower+=250, bought:false},
+{name:'Auto XP', cost:1000, effect:()=>setInterval(()=>{playerXP+=5; updateUI();},10000), bought:false}
+];
+
+// --- QUESTS ---
+const quests=[
+{name:'Reach Level 5', crumbleReward:500, completed:false, req:5},
+{name:'Reach Level 10', crumbleReward:10000, completed:false, req:10},
+{name:'Reach Level 25', crumbleReward:150000, completed:false, req:25},
+{name:'Reach Level 50', crumbleReward:500000, completed:false, req:50},
+{name:'Reach Level 100', crumbleReward:3000000, completed:false, req:100},
+{name:'Reach Level 250', crumbleReward:11000000, completed:false, req:250},
+{name:'Reach Level 500', crumbleReward:33333333, completed:false, req:500},
+{name:'Reach Level 1000', crumbleReward:2222222222, completed:false, req:1000},
+{name:'Collect 500 Crumbles', xpReward:75, completed:false, req:500},
+{name:'Collect 25000 Crumbles', xpReward:500, completed:false, req:25000},
+{name:'Collect 475000 Crumbles', xpReward:2575, completed:false, req:475000},
+{name:'Collect 9000000 Crumbles', xpReward:5050, completed:false, req:9000000},
+{name:'Collect 50000000 Crumbles', xpReward:7555, completed:false, req:50000000}
+];
+
+// --- REBIRTHS ---
+const rebirths=[
+{name:'Rebirth 1', levelReq:5, bought:false, multiplier:2},
+{name:'Rebirth 2', levelReq:10, bought:false, multiplier:3},
+{name:'Rebirth 3', levelReq:25, bought:false, multiplier:4},
+{name:'Rebirth 4', levelReq:50, bought:false, multiplier:5},
+{name:'Rebirth 5', levelReq:100, bought:false, multiplier:6},
+{name:'Rebirth 6', levelReq:200, bought:false, multiplier:7},
+{name:'Rebirth 7', levelReq:450, bought:false, multiplier:8},
+{name:'Rebirth 8', levelReq:900, bought:false, multiplier:9},
+{name:'Rebirth 9', levelReq:1520, bought:false, multiplier:10},
+{name:'Rebirth 10', levelReq:2222, bought:false, multiplier:11}
+];
+
+// --- SAVE/LOAD ---
+function saveGame(){ localStorage.setItem('crumbCount',crumbCount); localStorage.setItem('clickPower',clickPower); localStorage.setItem('playerXP',playerXP); localStorage.setItem('playerLevel',playerLevel); localStorage.setItem('rebirthMultiplier',rebirthMultiplier); localStorage.setItem('upgradesBought',JSON.stringify(upgrades.map(u=>u.bought))); localStorage.setItem('questsCompleted',JSON.stringify(quests.map(q=>q.completed))); localStorage.setItem('rebirthsBought',JSON.stringify(rebirths.map(r=>r.bought))); }
+function loadGame(){ crumbCount=parseFloat(localStorage.getItem('crumbCount'))||0; clickPower=parseFloat(localStorage.getItem('clickPower'))||1; playerXP=parseFloat(localStorage.getItem('playerXP'))||0; playerLevel=parseInt(localStorage.getItem('playerLevel'))||1; rebirthMultiplier=parseInt(localStorage.getItem('rebirthMultiplier'))||1; const uBought=JSON.parse(localStorage.getItem('upgradesBought'))||[]; upgrades.forEach((u,i)=>u.bought=uBought[i]||false); const qComp=JSON.parse(localStorage.getItem('questsCompleted'))||[]; quests.forEach((q,i)=>q.completed=qComp[i]||false); const rBought=JSON.parse(localStorage.getItem('rebirthsBought'))||[]; rebirths.forEach((r,i)=>r.bought=rBought[i]||false); updateUI(); }
+loadGame();
+
+// --- UPDATE UI ---
+function updateUI(){ document.getElementById('crumbCount').textContent=formatNum(crumbCount); document.getElementById('playerXP').textContent=formatNum(playerXP); document.getElementById('playerLevel').textContent=playerLevel; document.getElementById('xpThreshold').textContent=formatNum(xpThreshold); document.getElementById('rebirthMultiplier').textContent=rebirthMultiplier; document.getElementById('xpBar').style.width=Math.min(playerXP/xpThreshold*100,100)+'%'; renderUpgrades(); renderQuests(); renderRebirths(); saveGame(); }
+
+// --- RENDER ---
+function renderUpgrades(){ const c=document.getElementById('upgrades'); c.innerHTML=''; upgrades.forEach(u=>{ const b=document.createElement('button'); b.className='button'; b.textContent=u.bought? u.name+' (Bought)': u.name+' - '+u.cost+' Crumbles'; b.disabled=u.bought || crumbCount<u.cost; b.onclick=()=>{if(crumbCount>=u.cost && !u.bought){crumbCount-=u.cost; u.bought=true; u.effect(); updateUI();}}; c.appendChild(b); }); }
+function renderQuests(){ const c=document.getElementById('quests'); c.innerHTML=''; quests.forEach(q=>{ const b=document.createElement('div'); b.className='button'; b.textContent=q.completed? q.name+' (Completed)': q.name+' - Req: '+q.req; c.appendChild(b); }); }
+function renderRebirths(){ const c=document.getElementById('rebirths'); c.innerHTML=''; rebirths.forEach((r,i)=>{ const b=document.createElement('button'); b.className='button'; b.textContent=r.bought? r.name+' (Bought)': r.name+' - Req Level: '+r.levelReq; b.disabled=playerLevel<r.levelReq||(i>0 && !rebirths[i-1].bought); b.onclick=()=>{if(playerLevel>=r.levelReq&&(i===0 || rebirths[i-1].bought)&&!r.bought){r.bought=true; rebirthMultiplier=r.multiplier; crumbCount=0; playerXP=0; updateUI();}}; c.appendChild(b); }); }
+
+// --- PANEL SWITCH ---
+document.querySelectorAll(".panelBtn").forEach(btn=>{ btn.addEventListener('click',()=>{ document.querySelectorAll(".panelContainer").forEach(p=>p.classList.remove("active")); if(btn.id==='miniGameBtn'){openMiniGame(); return;} document.getElementById(btn.dataset.target).classList.add("active"); }); });
+
+// --- CRUMBLE CLICK ---
+const crumbleBtn=document.getElementById('crumble');
+crumbleBtn.addEventListener('click',(e)=>{ crumbCount+=clickPower*rebirthMultiplier; playerXP+=clickPower*rebirthMultiplier; createParticle(e.clientX,e.clientY); while(playerXP>=xpThreshold){playerXP-=xpThreshold; playerLevel++; xpThreshold=Math.floor(xpThreshold*1.5);} updateUI(); });
+
+// --- MINI GAME ---
+const miniGameContainer=document.getElementById('miniGameContainer'); const miniGameContent=document.getElementById('miniGameContent');
+document.getElementById('miniGameClose').addEventListener('click',()=>{ miniGameContainer.style.display='none'; });
+
+// --- RAIN ---
+function spawnRain(){ const rain=document.createElement('div'); rain.className='rain'; rain.textContent='🍪'; rain.style.left=Math.random()*window.innerWidth+'px'; rain.style.animationDuration=(3+Math.random()*3)+'s'; document.body.appendChild(rain); setTimeout(()=>rain.remove(),6000);}
+setInterval(spawnRain,300);
+
+});
+</script>
+</body>
+</html>
